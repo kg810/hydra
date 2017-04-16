@@ -1,19 +1,14 @@
-#include <iostream>
 #include "TradeHandler.h"
 #include "CedarHelper.h"
-#include "CedarLogging.h"
-#include "ProtoBufMsgHub.h"
+#include "IncludeOnlyInMain.h"
 
-int main() {
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-  CedarLogging::init("CTPTrade");
-  CedarJsonConfig::getInstance().loadConfigFile("./config/CTPTrade.json");
+int main(int argc, char *argv[]) {
+  CedarHelper::cedarAppInit(argc, argv);
 
   TradeHandler trade;
   trade.start();
 
-  LOG(INFO) << "CTPTrade service online!";
+  LOG(INFO) << "CTPTrade service online";
   CedarHelper::blockSignalAndSuspend();
 
   trade.close();

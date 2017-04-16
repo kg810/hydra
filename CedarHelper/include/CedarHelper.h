@@ -4,6 +4,7 @@
 #include "json/json.h"
 #include <signal.h>
 #include <fstream>
+#include <ctype.h>
 #ifdef __linux
 #include <sys/time.h>
 #include <sys/stat.h>
@@ -18,24 +19,21 @@
 #include <direct.h>
 #endif
 #include "CedarJsonConfig.h"
-#include "easylogging++.h"
+#include "CPlusPlusCode/ProtoBufMsg.pb.h"
+#include "CmdLineParser.h"
+#include "CedarLogger.h"
+#include "JsonHelper.h"
 
 class CedarHelper {
 
 public:
-  static int blockSignalAndSuspend() {
-    int sig = 0, s = 0;
-#ifdef __linux
-    sigset_t sigSet;
-    sigemptyset(&sigSet);
-    sigaddset(&sigSet, SIGINT);
-    sigaddset(&sigSet, SIGTERM);
-    sigaddset(&sigSet, SIGKILL);
-    sigprocmask(SIG_BLOCK, &sigSet, NULL);
+  static int cedarAppInit(int argc, char *argv[]) {
+    GOOGLE_PROTOBUF_VERIFY_VERSION;
+    std::string configPath;
+    configPath = CmdLineParser::getConfigPathFromCmd(argc, argv);
+    CedarJsonConfig::getInstance().loadConfigFile(configPath);
+    CedarLogger::init();
 
-    if ((s = sigwait(&sigSet, &sig)) != 0)
-      perror("sigwait error\n");
-#endif
     return 0;
   }
 
@@ -50,14 +48,59 @@ public:
     return 0;
   }
 
-  static std::string timestampString() {
-    time_t sec;
-    time(&sec);
-    std::stringstream ss;
-    ss << sec;
-    return ss.str();
+  static bool isStock(std::string code) {
+    if (code.size() == 6 && isdigit(code[0]))
+      return true;
+    return false;
   }
 
+  static int stockQtyRoundUp(int qty) {
+    if (qty % 100 == 0)
+      return qty;
+
+    int integer = ((double)qty / stockMinimumQty);
+    return integer * stockMinimumQty + stockMinimumQty;
+  }
+
+  static int stockQtyRoundDown(int qty) {
+    if (qty % 100 == 0)
+      return qty;
+
+    int integer = ((double)qty / stockMinimumQty);
+    return integer * stockMinimumQty;
+  }
+
+  static bool setupTradeServerMap(std::map<std::string, std::string> &accMap) {
+    std::string configPath = "/home/infra/hydra/ShareConfig/ServerMap.json";
+
+    Json::Value root;
+    JsonHelper::loadJsonFile(configPath, root);
+
+    std::vector<std::string> names, addrs;
+    JsonHelper::getStringArrayWithTag(root, "TradeServer", "name", names);
+    JsonHelper::getStringArrayWithTag(root, "TradeServer", "address", addrs);
+
+    for (unsigned i = 0; i < names.size(); i++) {
+      accMap[names[i]] = addrs[i];
+    }
+
+    return true;
+  }
+
+  static OrderRequest getInitOrderRequest(std::string respAddr,
+    RequestType reqType) {
+
+    OrderRequest req;
+    std::string outOrderId = CedarHelper::getOrderId();
+
+    req.set_response_address(respAddr);
+    req.set_type(reqType);
+    req.set_id(outOrderId);
+
+    return req;
+  }
+
+#ifdef __linux
   //this only get IPV4 addr, skip 127.0.0.1
   static std::string getResponseAddr() {
     std::string pull;
@@ -68,31 +111,31 @@ public:
     return ipStr + ":" + pull;
   }
 
-  static void getConfigRoot(std::string filepath, Json::Value& root) {
-    std::ifstream config(filepath, std::ifstream::binary);
-    Json::Reader reader;
-    reader.parse(config, root, false);
+  static int blockSignalAndSuspend() {
+    int sig = 0, s = 0;
+    sigset_t sigSet;
+    sigemptyset(&sigSet);
+    sigaddset(&sigSet, SIGINT);
+    sigaddset(&sigSet, SIGTERM);
+    sigaddset(&sigSet, SIGKILL);
+    sigprocmask(SIG_BLOCK, &sigSet, NULL);
+
+    if ((s = sigwait(&sigSet, &sig)) != 0)
+      perror("sigwait error\n");
+    return 0;
   }
 
-  //return current local time HHMMSSmmm
-  static std::string getCurTimeStamp(){
-    char currentTime[10];
-#ifdef _WIN32
-    SYSTEMTIME st;
-    GetLocalTime(&st);
-#endif
-#ifdef __linux
+  static std::string getOrderId() {
     struct timeval curTime;
     gettimeofday(&curTime, NULL);
-    int milli = curTime.tv_usec / 1000;
-    char buffer [10];
-    strftime(buffer, sizeof(buffer), "%H%M%S", localtime(&curTime.tv_sec));
-    sprintf(currentTime, "%s%d", buffer, milli);
-#endif
-    return currentTime;
+    return std::to_string(curTime.tv_sec) + std::to_string(curTime.tv_usec);
   }
+#endif
 
 private:
+  const static int stockMinimumQty = 100;
+
+#ifdef __linux
   static int getHostIP(std::string &ip) {
     struct ifaddrs *ifAddrStruct = NULL;
     struct ifaddrs *ifa = NULL;
@@ -124,6 +167,7 @@ private:
     }
     return -1;
   }
+#endif
 
 };
 

@@ -1,9 +1,8 @@
 #include <iostream>
 #include "CPlusPlusCode/ProtoBufMsg.pb.h"
 #include "ProtoBufMsgHub.h"
-#include "CedarJsonConfig.h"
 #include "CedarHelper.h"
-#include "CedarLogging.h"
+#include "IncludeOnlyInMain.h"
 
 int onMsg(MessageBase msg) {
   LOG(INFO) << "onMsg";
@@ -29,14 +28,10 @@ int onMsg(MessageBase msg) {
   return 0;
 }
 
-int main() {
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
+int main(int argc, char *argv[]) {
+  CedarHelper::cedarAppInit(argc, argv);
 
-  CedarLogging::init("ProtoBufMsgHub");
-
-  CedarJsonConfig::getInstance().loadConfigFile("../config/ProtoBufMsgHub.json");
   ProtoBufMsgHub msgHub;
-
   ProtoBufHelper::setupProtoBufMsgHub(msgHub);
   msgHub.registerCallback(onMsg);
 
@@ -49,7 +44,7 @@ int main() {
 
   DataRequest mdReq;
   mdReq.set_code("000001");
-  mdReq.set_exchange("SZ");
+  //mdReq.set_exchange("SZ");
 
   pushAddr = "127.0.0.1:15216";
   publishAddr = "127.0.0.1:15215";

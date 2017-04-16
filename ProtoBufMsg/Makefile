@@ -1,5 +1,3 @@
-# See README.txt.
-
 .PHONY: all cpp python clean
 
 all: cpp python

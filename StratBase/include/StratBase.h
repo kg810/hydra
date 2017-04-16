@@ -5,30 +5,36 @@
 #include "CPlusPlusCode/ProtoBufMsg.pb.h"
 #include "ProtoBufMsgHub.h"
 #include "Backtester.h"
+#include "PersistentState.h"
+#include "OrderAgent.h"
 
 class StratBase {
 public:
-  virtual int onMsg(MessageBase&) = 0;
-
-  template<typename T>
-  int sendRequest(MsgType type, T &obj) {
-    if (mode == "Backtest" || mode == "LiveTest") {
-      //goes to backtester
-      //backtester.sendRequest();
-    } else if (mode == "LiveTrading") {
-      //send through orderAgent
-    } else {
-      LOG(FATAL) << "Invalid mode " << mode << "check your config please";
-    }
-
-    return 0;
-  }
-
+  StratBase();
   int run();
 
+protected:
+  virtual bool onCreate() = 0;
+  virtual bool onExit() = 0;
+  virtual int onMsg(MessageBase&) = 0;
+
+  inline StrategyMode getStrategyMode() const {
+    return mode;
+  }
+
+  OrderAgent orderAgent;
+
 private:
+  int subscribeTicker(std::string, std::string);
   int onMsgWrapper(MessageBase);
-  std::string mode;
+  bool setupLiveTestConfig(Json::Value&);
+  bool getBacktestRangeDateStr(int, std::string&, std::string&);
+
+  std::string stkDataAddr, stkBoardcastAddr;
+  std::string futuresDataAddr, futuresBoardcastAddr;
+  std::vector<std::string> tickers, exchanges;
+
+  StrategyMode mode;
   ProtoBufMsgHub msgHub;
   Backtester backtester;
 };

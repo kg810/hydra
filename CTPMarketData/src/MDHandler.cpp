@@ -1,8 +1,7 @@
 #include "MDHandler.h"
-//#include <string.h>
-//#include <stdio.h>
-//#include "NewCedarConfig.h"
-//#include "CedarHelper.h"
+#include "CedarHelper.h"
+#include "EnumStringMap.h"
+#include "CedarTimeHelper.h"
 
 MDHandler::MDHandler() {
   m_pUserMDApi = CThostFtdcMdApi::CreateFtdcMdApi();
@@ -11,7 +10,7 @@ MDHandler::MDHandler() {
   //ConfigGetString("dataPath", m_dataPath);
 
   ProtoBufHelper::setupProtoBufMsgHub(msgHub);
-  msgHub.registerCallback(std::bind(&MDHandler::onMsg, 
+  msgHub.registerCallback(std::bind(&MDHandler::onMsg,
         this, std::placeholders::_1));
 }
 
@@ -28,10 +27,13 @@ int MDHandler::start() {
 
   //FUTURES MARKET DATA CONNECTION POINT
   m_pUserMDApi->Init();
+
+  return 0;
 }
 
 int MDHandler::close() {
   //m_pUserMDApi->ReqUserLogout();
+  return 0;
 }
 
 // 1: MarketOpen, else: MarketClose
@@ -46,7 +48,6 @@ void MDHandler::MarketOpenClose(int opencloseflag) {
   //CDXSHAREDOBJ* pCEM = g_ShareMem.m_pSharedObj;
 
   //for(int acctID = 0;acctID<CDX_ACCOUNT_CNT;acctID++) {
-  //  int AcctActive = (int)boost::interprocess::ipcdetail::atomic_read32(&pCEM->REGISTEREDACCT[acctID].active);
   //  if(AcctActive == 1) {
   //    pCEM->REGISTEREDACCT[acctID].MD.push(MD);
   //  }
@@ -71,13 +72,14 @@ void MDHandler::OnFrontConnected() {
 }
 
 void MDHandler::OnFrontDisconnected(int nReason) {
-  LOG(WARNING) <<"Futures Market disconnected, OnFrontDisconnected!";
+  LOG(WARNING) <<"Futures Market disconnected, OnFrontDisconnected, program quit!";
+  exit(0);
 }
 
-void MDHandler::OnRspUserLogin(CThostFtdcRspUserLoginField *pRspUserLogin, 
+void MDHandler::OnRspUserLogin(CThostFtdcRspUserLoginField *pRspUserLogin,
     CThostFtdcRspInfoField *pRspInfo, int nRequestID, bool bIsLast) {
 
-  LOG(INFO) << "Login ErrorCode:" << pRspInfo->ErrorID 
+  LOG(INFO) << "Login ErrorCode:" << pRspInfo->ErrorID
             << " ErrorMsg:" << pRspInfo->ErrorMsg
             << " RequestID:" << nRequestID
             << " Chain:" << bIsLast;
@@ -85,26 +87,18 @@ void MDHandler::OnRspUserLogin(CThostFtdcRspUserLoginField *pRspUserLogin,
   if (pRspInfo->ErrorID != 0) {
     LOG(ERROR) << "Login failed ! check error code and msg";
     exit(0);
-  } 
+  }
 
   LOG(INFO) << "MarketData API login successfully";
-  //m_pUserMDApi->SubscribeMarketData(pSubscriber, subscriber.size());
-  //m_TradingDay = pRspUserLogin->TradingDay;
-  //for (int i = 0; i < subscriber.size(); i++) {
-  //  std::string dataPath = m_dataPath + subscriber[i] + '/' + 
-  //  m_TradingDay + '_' + subscriber[i]  ;
-  //  symbolFile[subscriber[i]] = new std::ofstream(dataPath,
-  //  std::ios::out|std::ios::binary|std::ios::app);
-  //  if(!symbolFile[subscriber[i]] | !*symbolFile[subscriber[i]])
-  //    LOG(FATAL)<<"cannot open file to write";
-  //}
 }
 
 int MDHandler::onMsg(MessageBase msg) {
-  if (msg.type() == TYPE_ORDER_REQUEST) {
+  LOG(INFO) << "onMsg";
+  if (msg.type() == TYPE_DATAREQUEST) {
     DataRequest dataReq = ProtoBufHelper::unwrapMsg<DataRequest>(msg);
     LOG(INFO) << "recv data request " << dataReq.code() << " into codes";
     subscribeTicker(dataReq.code());
+    codeToEx[dataReq.code()] = EnumToString::toString(dataReq.exchange());
   } else {
     LOG(WARNING) << "recv invalid msg type " << msg.type();
   }
@@ -112,29 +106,29 @@ int MDHandler::onMsg(MessageBase msg) {
   return 0;
 }
 
-bool MDHandler::ctpMDtoCedarMD(CThostFtdcDepthMarketDataField *pMD, 
+bool MDHandler::ctpMDtoCedarMD(CThostFtdcDepthMarketDataField *pMD,
     MarketUpdate &md) {
 
   md.set_trading_day(pMD->TradingDay);
   md.set_code(pMD->InstrumentID);
-  md.set_exchange(pMD->ExchangeID);
-  md.set_recv_timestamp(CedarHelper::getCurTimeStamp());
+  //md.set_exchange(pMD->ExchangeID);
+  md.set_recv_timestamp(CedarTimeHelper::getCurTimeStamp());
 
-	md.set_last_price(pMD->LastPrice);
-	md.set_pre_settlement_price(pMD->PreSettlementPrice);
-	md.set_pre_close_price(pMD->PreClosePrice);
-	md.set_pre_open_interest(pMD->PreOpenInterest);
-	md.set_open_price(pMD->OpenPrice);
-	md.set_highest_price(pMD->HighestPrice);
-	md.set_lowest_price(pMD->LowestPrice);
-	md.set_volume(pMD->Volume);
-	md.set_turnover(pMD->Turnover);
-	md.set_open_interest(pMD->OpenInterest);
-	md.set_close_price(pMD->ClosePrice);
-	md.set_settlement_price(pMD->SettlementPrice);
-	md.set_high_limit_price(pMD->UpperLimitPrice);
-	md.set_low_limit_price(pMD->LowerLimitPrice);
-  md.set_average_price(pMD->AveragePrice);	
+  md.set_last_price(pMD->LastPrice);
+  md.set_pre_settlement_price(pMD->PreSettlementPrice);
+  md.set_pre_close_price(pMD->PreClosePrice);
+  md.set_pre_open_interest(pMD->PreOpenInterest);
+  md.set_open_price(pMD->OpenPrice);
+  md.set_highest_price(pMD->HighestPrice);
+  md.set_lowest_price(pMD->LowestPrice);
+  md.set_volume(pMD->Volume);
+  md.set_turnover(pMD->Turnover);
+  md.set_open_interest(pMD->OpenInterest);
+  md.set_close_price(pMD->ClosePrice);
+  md.set_settlement_price(pMD->SettlementPrice);
+  md.set_high_limit_price(pMD->UpperLimitPrice);
+  md.set_low_limit_price(pMD->LowerLimitPrice);
+  md.set_average_price(pMD->AveragePrice);
 
   //format like "09:30:00" --> "093000000"
   char exchangeTimestamp[10] = {0};
@@ -148,6 +142,8 @@ bool MDHandler::ctpMDtoCedarMD(CThostFtdcDepthMarketDataField *pMD,
   md.add_bid_volume(pMD->BidVolume1);
   md.add_ask_price(pMD->AskPrice1);
   md.add_ask_volume(pMD->AskVolume1);
+
+  return true;
 }
 
 int MDHandler::subscribeTicker(std::string ticker) {
@@ -155,7 +151,7 @@ int MDHandler::subscribeTicker(std::string ticker) {
   static char *tmpTicker[1];
 
   if (subTickers.find(ticker) != subTickers.end()) {
-    LOG(WARNING) << "Subscribe a duplicate ticker " << ticker;
+    LOG(INFO) << "ticker already subscribed" << ticker;
     return -1;
   }
 
@@ -174,24 +170,28 @@ void MDHandler::OnRspSubMarketData(CThostFtdcSpecificInstrumentField *pInst,
   if (pRspInfo->ErrorID == 0) {
     LOG(INFO) << "Successfully register " << pInst;
   } else {
-    LOG(ERROR) << pInst << "Fail to register " << pInst << " ErrorCode:" 
+    LOG(ERROR) << pInst << "Fail to register " << pInst << " ErrorCode:"
                 << pRspInfo->ErrorID;
   }
 }
 
 void MDHandler::OnRtnDepthMarketData(CThostFtdcDepthMarketDataField *pMD) {
+  //LOG(INFO) << std::string(pMD->ExchangeInstID) << "."
+    //<< std::string(LOG(INFO)) << pMD->ExchangeID << " new update";
+
   MarketUpdate md;
   ctpMDtoCedarMD(pMD, md);
   std::string res = ProtoBufHelper::wrapMsg<MarketUpdate>(TYPE_MARKETUPDATE,md);
-  msgHub.boardcastMsg(pMD->InstrumentID, res);
+  std::string chan = md.code()+ "." + codeToEx[md.code()];
+  msgHub.boardcastMsg(chan, res);
 
-  LOG(INFO) << res;
+  LOG(INFO) << "onMarketUpdate";
 }
 
 void MDHandler::OnRspError(CThostFtdcRspInfoField *pRspInfo,
     int nRequestID, bool bIsLast) {
   if (pRspInfo->ErrorID != 0) {
-    LOG(ERROR) << "Recv resp error " << " ErrorCode:" 
+    LOG(ERROR) << "Recv resp error " << " ErrorCode:"
                 << pRspInfo->ErrorID << " ErrorMsg:" << pRspInfo->ErrorMsg;
   }
 }
